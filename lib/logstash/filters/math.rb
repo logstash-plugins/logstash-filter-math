@@ -1,14 +1,19 @@
-require "logstash/filters/base"
+# encoding: utf-8
+
 require "logstash/namespace"
-# Do various simple math operations
+require "logstash/filters/base"
+
+require_relative "functions"
+
+# Do various simple math functions
 # Configuration:
 # filter {
 #   math {
 #     calculate => [
-#         [ "add", "a_field1", "a_field2", "a_target" ],   # a + b => target
-#         [ "sub", "b_field1", "b_field2", "b_target" ],   # a - b => target
-#         [ "div", "c_field1", "c_field2", "c_target" ],   # a / b => target
-#         [ "mpx", "d_field1", "d_field2", "d_target" ]    # a * b => target
+#         [ "+", "a_field1", "a_field2", "a_target" ],   # a + b => target
+#         [ "-", "b_field1", "b_field2", "b_target" ],   # a - b => target
+#         [ "/", "c_field1", "c_field2", "c_target" ],   # a / b => target
+#         [ "*", "d_field1", "d_field2", "d_target" ]    # a * b => target
 #     ]
 #   }
 # }
@@ -19,50 +24,129 @@ require "logstash/namespace"
 #
 # Works with float and integer values
 
-class LogStash::Filters::Math < LogStash::Filters::Base
+module LogStash module Filters class Math < LogStash::Filters::Base
+  OperandStruct = Struct.new(:value, :validated) do
+    def validated_literal?() validated; end
+    def inspect() value.inspect; end
+    def to_s() value.to_s; end
+  end
+
+  # TODO: Add support for unitary functions like abs and negation (-),
+  #       these would have one operand and may or may not have a target.
+  #       Add support for constants as either operand, e.g. seconds to millis, 100 / N
+  #       Add support for conversions: distance(mi <-> km)
+  #       Add support for percent change
   config_name "math"
 
   # fields - second subtracted from the first
   config :calculate, :validate => :array, :required => true
 
   public
+
   def register
+    @functions = {}
+    [
+      [Functions::Add.new, '+', 'add', 'plus'],
+      [Functions::Subtract.new, '-', 'subtract'],
+      [Functions::Multiply.new, '*', 'times', 'multiply'],
+      [Functions::Power.new, '**', '^', 'to the power of'],
+      [Functions::Divide.new, '/', 'divide'],
+      [Functions::Modulo.new, 'mod', 'modulo'],
+      [Functions::FloatDivide.new, 'fdiv', 'float divide']
+    ].each do |list|
+      value = list.shift
+      list.each{|key| @functions[key] = value}
+    end
+
     # Do some sanity checks that calculate is actually an array-of-arrays, and that each calculation (sub-array)
-    # is exactly 4 fields and the first field is a valid calculation opperator name.
-    for calculation in calculate do
-      if calculation.length % 4 != 0
-        abort("Each calculation must have 4 elements, this one had " + calculation.length + " " + calculation.to_s )
-      end # end calculaction.length is 4
-      if ! calculation[0].match('^(add|sub|div|mpx)$' )
-        abort("First element of a calculation must be add|sub|div|mpx, but is: " + calculation[0] )
-      end # if calculation[0] valid
-    end # for each calculate
+    # is exactly 4 fields and the first field is a valid calculation operator name.
+    @calculate_copy = []
+    all_function_keys = @functions.keys
+    calculate.each do |calculation|
+      if calculation.size != 4
+        raise LogStash::ConfigurationError, I18n.t(
+          "logstash.runner.configuration.invalid_plugin_register",
+          :plugin => "filter",
+          :type => "math",
+          :error => "Invalid number of elements in a calculation setting: expected 4, got: #{calculation.size}. You specified: #{calculation}"
+        )
+      end
+      function_key, operand1, operand2, target = calculation
+      if !all_function_keys.include?(function_key)
+        raise LogStash::ConfigurationError, I18n.t(
+          "logstash.runner.configuration.invalid_plugin_register",
+          :plugin => "filter",
+          :type => "math",
+          :error => "Invalid first element of a calculation: expected one of #{all_function_keys.join(',')}, got: #{function_key}. You specified: #{calculation.join(',')}"
+        )
+      end
+      function = @functions[function_key]
+      arg_lhs = operand1.is_a?(Numeric) ? OperandStruct.new(operand1, true) : OperandStruct.new(operand1, false)
+      arg_rhs = OperandStruct.new(operand2, false)
+      if operand2.is_a?(Numeric)
+        warning = function.invalid?(operand1, operand2)
+        unless warning.nil?
+          raise LogStash::ConfigurationError, I18n.t(
+            "logstash.runner.configuration.invalid_plugin_register",
+            :plugin => "filter",
+            :type => "math",
+            :error => "Numeric literals are specified as in the calculation but the function invalidates with '#{warning}'. You specified: #{calculation.join(',')}"
+          )
+        end
+        arg_rhs = OperandStruct.new(operand2, true)
+      end
+      @calculate_copy << [function, arg_lhs, arg_rhs, target]
+    end
   end # def register
 
-  public
   def filter(event)
-    return unless filter?(event)
-    for calculation in calculate do
-      # Check that all the fields exist and are numeric
-      next unless event.include?(calculation[1])
-      next unless event.include?(calculation[2])
-      next unless event.get(calculation[1]) == 0 or event.get(calculation[1]).is_a? Float or event.get(calculation[1]).is_a? Integer
-      next unless event.get(calculation[2]) == 0 or event.get(calculation[2]).is_a? Float or event.get(calculation[2]).is_a? Integer
-      case calculation[0]
-      when "add"
-        event.set( calculation[3], event.get(calculation[1]) + event.get(calculation[2]) )
-      when "sub"
-        event.set(calculation[3], event.get(calculation[1]) - event.get(calculation[2]) )
-      when "div"
-        # Avoid division by zero
-        next if event.get( calculation[2] ) == 0
-        event.set( calculation[3], event.get( calculation[1]).to_f / event.get(calculation[2]) )
-      when "mpx"
-        event.set( calculation[3], event.get( calculation[1]) * event.get( calculation[2] ) )
-      end # case calculation[0]
-    end # for each calculate
+    event_changed = false # can exit if none of the calculations are are suitable
+    @calculate_copy.each do |function, lhs_key, rhs_key, target|
+      logger.debug("executing", "function" => function.name, "left_field" => lhs_key, "right_field" => rhs_key, "target" => target)
+      # TODO add support for automatic conversion to Numeric if String
+      # lhs_key and rhs_key are instances of OperandStruct
+      operand1 = lhs_key.validated_literal? ? lhs_key.value : validate_field(event, lhs_key.value)
+      operand2 = rhs_key.validated_literal? ? rhs_key.value : validate_field(event, rhs_key.value)
+      # allow all the validation warnings to be logged before we skip to next
+      next if operand1.nil? || operand2.nil?
+      next unless validate_function_values(function, event, operand1, operand2)
+
+      result = function.call(operand1, operand2)
+      event.set(target, result)
+      logger.debug("updated event", "function" => function.name, "target" => target, "result" => result)
+      event_changed = true
+    end
+    return unless event_changed
     filter_matched(event)
-  end # def filter
-end # class LogStash::Filters::Math
+  end
+
+  private
+
+  def validate_field(event, field)
+    value = event.get(field)
+    if value.nil?
+      logger.warn("field not found", "field" => field, "event" => event.to_hash)
+      return nil
+    end
+    case value
+    when Numeric
+      value
+    when LogStash::Timestamp, Time
+      value.to_f
+    else
+      logger.warn("field value is not numeric or time", "field" => field, "value" => value, "event" => event.to_hash)
+      nil
+    end
+  end
+
+  def validate_function_values(function, event, operand1, operand2)
+    warning = function.invalid?(operand1, operand2)
+    unless warning.nil?
+      logger.warn(warning, "function" => function.name, "operand 1" => operand1, "operand 2" => operand2, "event" => event.to_hash)
+      return false
+    end
+    true
+  end
+end end end
 
 
