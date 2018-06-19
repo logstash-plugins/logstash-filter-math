@@ -3,7 +3,8 @@
 require "logstash/namespace"
 require "logstash/filters/base"
 
-require_relative "functions"
+require_relative "math_functions"
+require_relative "math_calculation_elements"
 
 # Do various simple math functions
 # Configuration:
@@ -25,12 +26,6 @@ require_relative "functions"
 # Works with float and integer values
 
 module LogStash module Filters class Math < LogStash::Filters::Base
-  OperandStruct = Struct.new(:value, :validated) do
-    def validated_literal?() validated; end
-    def inspect() value.inspect; end
-    def to_s() value.to_s; end
-  end
-
   # TODO: Add support for unitary functions like abs and negation (-),
   #       these would have one operand and may or may not have a target.
   #       Add support for constants as either operand, e.g. seconds to millis, 100 / N
@@ -44,24 +39,25 @@ module LogStash module Filters class Math < LogStash::Filters::Base
   public
 
   def register
-    @functions = {}
+    functions = {}
     [
-      [Functions::Add.new, '+', 'add', 'plus'],
-      [Functions::Subtract.new, '-', 'subtract'],
-      [Functions::Multiply.new, '*', 'times', 'multiply'],
-      [Functions::Power.new, '**', '^', 'to the power of'],
-      [Functions::Divide.new, '/', 'divide'],
-      [Functions::Modulo.new, 'mod', 'modulo'],
-      [Functions::FloatDivide.new, 'fdiv', 'float divide']
+      [MathFunctions::Add.new, '+', 'add', 'plus'],
+      [MathFunctions::Subtract.new, '-', 'subtract'],
+      [MathFunctions::Multiply.new, '*', 'times', 'multiply'],
+      [MathFunctions::Power.new, '**', '^', 'to the power of'],
+      [MathFunctions::Divide.new, '/', 'divide'],
+      [MathFunctions::Modulo.new, 'mod', 'modulo'],
+      [MathFunctions::FloatDivide.new, 'fdiv', 'float divide']
     ].each do |list|
       value = list.shift
-      list.each{|key| @functions[key] = value}
+      list.each{|key| functions[key] = value}
     end
 
     # Do some sanity checks that calculate is actually an array-of-arrays, and that each calculation (sub-array)
     # is exactly 4 fields and the first field is a valid calculation operator name.
     @calculate_copy = []
-    all_function_keys = @functions.keys
+    all_function_keys = functions.keys
+    @register = []
     calculate.each do |calculation|
       if calculation.size != 4
         raise LogStash::ConfigurationError, I18n.t(
@@ -80,11 +76,13 @@ module LogStash module Filters class Math < LogStash::Filters::Base
           :error => "Invalid first element of a calculation: expected one of #{all_function_keys.join(',')}, got: #{function_key}. You specified: #{calculation.join(',')}"
         )
       end
-      function = @functions[function_key]
-      arg_lhs = operand1.is_a?(Numeric) ? OperandStruct.new(operand1, true) : OperandStruct.new(operand1, false)
-      arg_rhs = OperandStruct.new(operand2, false)
-      if operand2.is_a?(Numeric)
-        warning = function.invalid?(operand1, operand2)
+      function = functions[function_key]
+
+      left_element = MathCalulationElements.build(operand1, 1, @register)
+      right_element = MathCalulationElements.build(operand2, 2, @register)
+      if right_element.literal?
+        lhs = left_element.literal? ? left_element.get : 1
+        warning = function.invalid?(lhs, right_element.get)
         unless warning.nil?
           raise LogStash::ConfigurationError, I18n.t(
             "logstash.runner.configuration.invalid_plugin_register",
@@ -93,59 +91,39 @@ module LogStash module Filters class Math < LogStash::Filters::Base
             :error => "Numeric literals are specified as in the calculation but the function invalidates with '#{warning}'. You specified: #{calculation.join(',')}"
           )
         end
-        arg_rhs = OperandStruct.new(operand2, true)
       end
-      @calculate_copy << [function, arg_lhs, arg_rhs, target]
+      result_element = MathCalulationElements.build(target, 3, @register)
+      @calculate_copy << [function, left_element, right_element, result_element]
     end
-  end # def register
+    if @calculate_copy.last.last.is_a?(MathCalulationElements::RegisterElement)
+      raise LogStash::ConfigurationError, I18n.t(
+        "logstash.runner.configuration.invalid_plugin_register",
+        :plugin => "filter",
+        :type => "math",
+        :error => "The final target is a Register, the overall calculation result will not be set in the event"
+      )
+    end
+  end
 
   def filter(event)
     event_changed = false # can exit if none of the calculations are are suitable
-    @calculate_copy.each do |function, lhs_key, rhs_key, target|
-      logger.debug("executing", "function" => function.name, "left_field" => lhs_key, "right_field" => rhs_key, "target" => target)
+    @register.clear # don't carry over register results from one event to the next.
+    @calculate_copy.each do |function, left_element, right_element, result_element|
+      logger.debug("executing", "function" => function.name, "left_field" => left_element, "right_field" => right_element, "target" => result_element)
       # TODO add support for automatic conversion to Numeric if String
-      # lhs_key and rhs_key are instances of OperandStruct
-      operand1 = lhs_key.validated_literal? ? lhs_key.value : validate_field(event, lhs_key.value)
-      operand2 = rhs_key.validated_literal? ? rhs_key.value : validate_field(event, rhs_key.value)
+      operand1 = left_element.get(event)
+      operand2 = right_element.get(event)
       # allow all the validation warnings to be logged before we skip to next
       next if operand1.nil? || operand2.nil?
-      next unless validate_function_values(function, event, operand1, operand2)
+      next if function.invalid?(operand1, operand2, event)
 
       result = function.call(operand1, operand2)
-      event.set(target, result)
-      logger.debug("updated event", "function" => function.name, "target" => target, "result" => result)
+      result_element.set(result, event)
+      logger.debug("calculation result stored", "function" => function.name, "target" => result_element, "result" => result)
       event_changed = true
     end
     return unless event_changed
     filter_matched(event)
-  end
-
-  private
-
-  def validate_field(event, field)
-    value = event.get(field)
-    if value.nil?
-      logger.warn("field not found", "field" => field, "event" => event.to_hash)
-      return nil
-    end
-    case value
-    when Numeric
-      value
-    when LogStash::Timestamp, Time
-      value.to_f
-    else
-      logger.warn("field value is not numeric or time", "field" => field, "value" => value, "event" => event.to_hash)
-      nil
-    end
-  end
-
-  def validate_function_values(function, event, operand1, operand2)
-    warning = function.invalid?(operand1, operand2)
-    unless warning.nil?
-      logger.warn(warning, "function" => function.name, "operand 1" => operand1, "operand 2" => operand2, "event" => event.to_hash)
-      return false
-    end
-    true
   end
 end end end
 

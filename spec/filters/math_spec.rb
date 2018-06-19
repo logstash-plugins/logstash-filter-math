@@ -157,6 +157,7 @@ describe LogStash::Filters::Math do
         end
       end
     end
+
     describe "terse operation name" do
       config <<-CONFIG
         filter {  math { calculate => [ [ "**", "var1", "var2", "result" ] ] } }
@@ -193,6 +194,7 @@ describe LogStash::Filters::Math do
       end
     end
   end
+
   describe "Division" do
     # The logstash config.
     config <<-CONFIG
@@ -404,11 +406,34 @@ describe LogStash::Filters::Math do
           ] } }
     CONFIG
 
-    describe "results of one calculation can be used in the next calculation"
+    describe "results of one calculation can be used in the next calculation" do
+      sample( "var1" => 3.4,  "var2" => 6.6, "var3" => 4.4, "var4" => 2.4 ) do
+        # I would really expect 20.0 here... what kind of floating point error is this?!
+        expect( subject.get("result") ).to eq( 20.000000000000004 )
+      end
+    end
+  end
+
+  describe "Sequence with registers" do
+    describe "results of one calculation can be used in the next calculation" do
+      config <<-CONFIG
+        filter {  math { calculate => [
+              [ "+", "[var1]", "[var2]", "R[0]" ],
+              [ "-", "[var3]", "[var4]", "R[1]" ],
+              [ "*", "R[0]", "R[1]", "[result]" ]
+            ] } }
+      CONFIG
       sample( "var1" => 3.4,  "var2" => 6.6, "var3" => 4.4, "var4" => 2.4 ) do
         # I would really expect 20.0 here... what kind of floating point error is this?!
         expect( subject.get("result") ).to eq( 20.000000000000004 )
       end
     end
 
+    describe "when a register is used as the very last target, a configuration error is raised" do
+      it "raises a validation error" do
+        pipeline = new_pipeline_from_string('filter {  math { calculate => [ [ "**", "[var1]", "[var2]", "R[0]" ] ] } }')
+        expect { pipeline.instance_eval{ @filters.each(&:register) } }.to raise_exception(LogStash::ConfigurationError, /The final target is a Register, the overall calculation result will not be set in the event/)
+      end
+    end
+  end
 end
