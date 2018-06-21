@@ -3,7 +3,7 @@ require "logstash/util/loggable"
 
 module LogStash module Filters
   module MathCalulationElements
-    REGISTER_REFERENCE_RE = /^R\[(\d+)]$/
+    REGISTER_REFERENCE_RE = /^MEM\[(\d+)]$/
 
     def self.build(reference, position, register)
       case reference

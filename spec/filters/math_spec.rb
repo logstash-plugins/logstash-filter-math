@@ -418,9 +418,9 @@ describe LogStash::Filters::Math do
     describe "results of one calculation can be used in the next calculation" do
       config <<-CONFIG
         filter {  math { calculate => [
-              [ "+", "[var1]", "[var2]", "R[0]" ],
-              [ "-", "[var3]", "[var4]", "R[1]" ],
-              [ "*", "R[0]", "R[1]", "[result]" ]
+              [ "+", "[var1]", "[var2]", "MEM[0]" ],
+              [ "-", "[var3]", "[var4]", "MEM[1]" ],
+              [ "*", "MEM[0]", "MEM[1]", "[result]" ]
             ] } }
       CONFIG
       sample( "var1" => 3.4,  "var2" => 6.6, "var3" => 4.4, "var4" => 2.4 ) do
@@ -431,7 +431,7 @@ describe LogStash::Filters::Math do
 
     describe "when a register is used as the very last target, a configuration error is raised" do
       it "raises a validation error" do
-        pipeline = new_pipeline_from_string('filter {  math { calculate => [ [ "**", "[var1]", "[var2]", "R[0]" ] ] } }')
+        pipeline = new_pipeline_from_string('filter {  math { calculate => [ [ "**", "[var1]", "[var2]", "MEM[0]" ] ] } }')
         expect { pipeline.instance_eval{ @filters.each(&:register) } }.to raise_exception(LogStash::ConfigurationError, /The final target is a Register, the overall calculation result will not be set in the event/)
       end
     end
