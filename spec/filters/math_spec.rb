@@ -89,6 +89,53 @@ describe LogStash::Filters::Math do
     end
   end
 
+  describe "Rounding" do
+    describe "when using a field as the right hand operand" do
+      config <<-CONFIG
+        filter {  math { calculate => [ [ "round", "var1", "var2", "result" ] ] } }
+      CONFIG
+
+      describe "should round a float field" do
+        sample( "var1" => 0.42424242, "var2" => 2 ) do
+          expect( subject.get("result") ).to eq( 0.42 )
+        end
+      end
+
+      describe "should round an integer field" do
+        sample( "var1" => 42, "var2" => 2 ) do
+          expect( subject.get("result") ).to eq( 42.0 )
+        end
+      end
+    end
+
+    describe "when using a literal as the right hand operand" do
+      config <<-CONFIG
+        filter {  math { calculate => [ [ "round", "var1", 3, "result" ] ] } }
+      CONFIG
+
+      describe "should round a float field" do
+        sample( "var1" => 0.42424242 ) do
+          expect( subject.get("result") ).to eq( 0.424 )
+        end
+      end
+
+      describe "should convert an integer to a float" do
+        sample( "var1" => 42 ) do
+          expect( subject.get("result") ).to eq( 42.0 )
+        end
+      end
+
+      describe "should convert a float to an integer" do
+        config <<-CONFIG
+          filter {  math { calculate => [ [ "round", "var1", 0, "result" ] ] } }
+        CONFIG
+        sample( "var1" => 42.0 ) do
+          expect( subject.get("result") ).to eq( 42 )
+        end
+      end
+    end
+  end
+
   describe "Multiplication" do
     # The logstash config.
     config <<-CONFIG

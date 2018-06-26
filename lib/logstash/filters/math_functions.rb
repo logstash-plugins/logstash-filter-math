@@ -61,6 +61,18 @@ module LogStash module Filters
       end
     end
 
+    class Round
+      include NoValidityCheckNeeded
+
+      def name
+        "round"
+      end
+
+      def call(op1, op2)
+        op1.round(op2)
+      end
+    end
+
     class Power
       include LogStash::Util::Loggable
 

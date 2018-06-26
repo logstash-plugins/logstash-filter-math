@@ -44,8 +44,9 @@ module LogStash module Filters class Math < LogStash::Filters::Base
       [MathFunctions::Add.new, '+', 'add', 'plus'],
       [MathFunctions::Subtract.new, '-', 'subtract'],
       [MathFunctions::Multiply.new, '*', 'times', 'multiply'],
+      [MathFunctions::Round.new, 'round'],
       [MathFunctions::Power.new, '**', '^', 'to the power of'],
-      [MathFunctions::Divide.new, '/', 'divide'],
+      [MathFunctions::Divide.new, '/', 'div', 'divide'],
       [MathFunctions::Modulo.new, 'mod', 'modulo'],
       [MathFunctions::FloatDivide.new, 'fdiv', 'float divide']
     ].each do |list|
@@ -53,7 +54,7 @@ module LogStash module Filters class Math < LogStash::Filters::Base
       list.each{|key| functions[key] = value}
     end
 
-    # Do some sanity checks that calculate is actually an array-of-arrays, and that each calculation (sub-array)
+    # Do some sanity checks that calculate is actually an array of arrays, and that each calculation (inner array)
     # is exactly 4 fields and the first field is a valid calculation operator name.
     @calculate_copy = []
     all_function_keys = functions.keys
@@ -78,8 +79,8 @@ module LogStash module Filters class Math < LogStash::Filters::Base
       end
       function = functions[function_key]
 
-      left_element = MathCalulationElements.build(operand1, 1, @register)
-      right_element = MathCalulationElements.build(operand2, 2, @register)
+      left_element = MathCalculationElements.build(operand1, 1, @register)
+      right_element = MathCalculationElements.build(operand2, 2, @register)
       if right_element.literal?
         lhs = left_element.literal? ? left_element.get : 1
         warning = function.invalid?(lhs, right_element.get)
@@ -92,10 +93,10 @@ module LogStash module Filters class Math < LogStash::Filters::Base
           )
         end
       end
-      result_element = MathCalulationElements.build(target, 3, @register)
+      result_element = MathCalculationElements.build(target, 3, @register)
       @calculate_copy << [function, left_element, right_element, result_element]
     end
-    if @calculate_copy.last.last.is_a?(MathCalulationElements::RegisterElement)
+    if @calculate_copy.last.last.is_a?(MathCalculationElements::RegisterElement)
       raise LogStash::ConfigurationError, I18n.t(
         "logstash.runner.configuration.invalid_plugin_register",
         :plugin => "filter",
