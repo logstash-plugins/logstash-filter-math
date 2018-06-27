@@ -85,7 +85,7 @@ module LogStash module Filters
       end
 
       def invalid?(op1, op2, event = nil)
-        if op1.is_a?(Numeric) && op1.negative? && !op2.integer?
+        if op1.is_a?(Numeric) && op1 < 0 && !op2.integer?
           warning = "raising a negative number to a fractional exponent results in a complex number that cannot be stored in an event"
           if event
             # called from filter so log
