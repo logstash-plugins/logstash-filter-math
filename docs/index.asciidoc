@@ -132,8 +132,8 @@ The first element must be the operator. Valid operators are:
 |=======================================================================
 | Operation | Representations
 | Add | '+', 'add', 'plus'
-| Subtract | '-', 'subtract'
-| Multiply | '*', 'times', 'multiply'
+| Subtract | '-', 'sub', 'subtract'
+| Multiply | '*', 'mpx', 'times', 'multiply'
 | Round | 'round'
 | Power | '**', '^', 'to the power of'
 | Divide | '/', 'div', 'divide'

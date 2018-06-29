@@ -427,7 +427,7 @@ describe LogStash::Filters::Math do
     t1 = Time.new(2018, 06, 8, 11, 0, 0,"+00:00")
     t2 = Time.new(2018, 06, 8, 11, 0, 30,"+00:00")
     config <<-CONFIG
-      filter {  math { calculate => [ [ "subtract", "[var2]", "[var1]", "result" ] ] } }
+      filter {  math { calculate => [ [ "sub", "[var2]", "[var1]", "result" ] ] } }
     CONFIG
 
     context "subtracting 2 LogStash::Timestamps" do
@@ -447,9 +447,9 @@ describe LogStash::Filters::Math do
     # The logstash config.
     config <<-CONFIG
       filter {  math { calculate => [
-            [ "+", "var1", "var2", "r1" ],
-            [ "-", "var3", "var4", "r2" ],
-            [ "*", "r1", "r2", "result" ]
+            [ "add", "var1", "var2", "r1" ],
+            [ "sub", "var3", "var4", "r2" ],
+            [ "mpx", "r1", "r2", "result" ]
           ] } }
     CONFIG
 
