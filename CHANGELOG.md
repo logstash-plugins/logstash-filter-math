@@ -1,6 +1,6 @@
 ## 1.1.0
   - Bumping to this version as this plugin was published to rubygems at v1.0
-  - Added backward compatible Operator reference aliases `'sub', 'mpx'` [math filter #8](https://github.com/logstash-plugins/logstash-filter-math/pull/8)
+  - Fixed add backward compatible Operator reference aliases `'sub', 'mpx'` [math filter #8](https://github.com/logstash-plugins/logstash-filter-math/pull/8)
 
 ## 1.0.0
   - This plugin is now in the logstash-plugins GH org
