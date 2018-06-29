@@ -42,8 +42,8 @@ module LogStash module Filters class Math < LogStash::Filters::Base
     functions = {}
     [
       [MathFunctions::Add.new, '+', 'add', 'plus'],
-      [MathFunctions::Subtract.new, '-', 'subtract'],
-      [MathFunctions::Multiply.new, '*', 'times', 'multiply'],
+      [MathFunctions::Subtract.new, '-', 'sub', 'subtract'],
+      [MathFunctions::Multiply.new, '*', 'mpx', 'times', 'multiply'],
       [MathFunctions::Round.new, 'round'],
       [MathFunctions::Power.new, '**', '^', 'to the power of'],
       [MathFunctions::Divide.new, '/', 'div', 'divide'],
