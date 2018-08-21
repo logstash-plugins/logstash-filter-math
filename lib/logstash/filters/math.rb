@@ -58,7 +58,7 @@ module LogStash module Filters class Math < LogStash::Filters::Base
     # is exactly 4 fields and the first field is a valid calculation operator name.
     @calculate_copy = []
     all_function_keys = functions.keys
-    @register = []
+    @registers = java.util.concurrent.ConcurrentHashMap.new
     calculate.each do |calculation|
       if calculation.size != 4
         raise LogStash::ConfigurationError, I18n.t(
@@ -79,8 +79,8 @@ module LogStash module Filters class Math < LogStash::Filters::Base
       end
       function = functions[function_key]
 
-      left_element = MathCalculationElements.build(operand1, 1, @register)
-      right_element = MathCalculationElements.build(operand2, 2, @register)
+      left_element = MathCalculationElements.build(operand1, 1, @registers)
+      right_element = MathCalculationElements.build(operand2, 2, @registers)
       if right_element.literal?
         lhs = left_element.literal? ? left_element.get : 1
         warning = function.invalid?(lhs, right_element.get)
@@ -93,7 +93,7 @@ module LogStash module Filters class Math < LogStash::Filters::Base
           )
         end
       end
-      result_element = MathCalculationElements.build(target, 3, @register)
+      result_element = MathCalculationElements.build(target, 3, @registers)
       @calculate_copy << [function, left_element, right_element, result_element]
     end
     if @calculate_copy.last.last.is_a?(MathCalculationElements::RegisterElement)
@@ -108,7 +108,7 @@ module LogStash module Filters class Math < LogStash::Filters::Base
 
   def filter(event)
     event_changed = false # can exit if none of the calculations are are suitable
-    @register.clear # don't carry over register results from one event to the next.
+    get_register.clear # don't carry over register results from one event to the next.
     @calculate_copy.each do |function, left_element, right_element, result_element|
       logger.debug("executing", "function" => function.name, "left_field" => left_element, "right_field" => right_element, "target" => result_element)
       # TODO add support for automatic conversion to Numeric if String
@@ -125,6 +125,12 @@ module LogStash module Filters class Math < LogStash::Filters::Base
     end
     return unless event_changed
     filter_matched(event)
+  end
+
+  private
+
+  def get_register
+    @registers.computeIfAbsent(Thread.current, lambda { |x| Array.new })
   end
 end end end
 

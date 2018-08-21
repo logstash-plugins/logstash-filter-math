@@ -5,7 +5,7 @@ module LogStash module Filters
   module MathCalculationElements
     REGISTER_REFERENCE_RE = /^MEM\[(\d+)]$/
 
-    def self.build(reference, position, register)
+    def self.build(reference, position, registers)
       case reference
       when Numeric
         if position == 3
@@ -17,7 +17,7 @@ module LogStash module Filters
       when String
         match = REGISTER_REFERENCE_RE.match(reference)
         if match
-          RegisterElement.new(reference, position, match[1].to_i, register)
+          RegisterElement.new(reference, position, match[1].to_i, registers)
         else
           FieldElement.new(reference, position)
         end
@@ -28,11 +28,11 @@ module LogStash module Filters
 
     class RegisterElement
       # supports `get` and `set`
-      def initialize(reference, position, index, register)
+      def initialize(reference, position, index, registers)
         @reference = reference
         @position = position
         @index = index
-        @register = register
+        @registers = registers
         @description = (position == 3 ? "#{@index}" : "operand #{@position}").prepend("register ").concat(": '#{@reference}'")
       end
 
@@ -42,11 +42,11 @@ module LogStash module Filters
 
       def set(value, event)
         # raise usage error if called when position != 3 ??
-        @register[@index] = value
+        get_register[@index] = value
       end
 
       def get(event)
-        @register[@index] #log warning if nil
+        get_register[@index] #log warning if nil
       end
 
       def inspect
@@ -55,6 +55,12 @@ module LogStash module Filters
 
       def to_s
         @description
+      end
+
+      private
+
+      def get_register
+        @registers.computeIfAbsent(Thread.current, lambda { |x| Array.new })
       end
     end
 
