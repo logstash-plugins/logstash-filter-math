@@ -1,3 +1,6 @@
+## master
+  - Fix to make registers threadsafe. [math filter #10](https://github.com/logstash-plugins/logstash-filter-math/issues/10)
+
 ## 1.1.0
   - Bumping to this version as this plugin was published to rubygems at v1.0
   - Fixed add backward compatible Operator reference aliases `'sub', 'mpx'` [math filter #8](https://github.com/logstash-plugins/logstash-filter-math/pull/8)
