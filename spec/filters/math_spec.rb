@@ -443,6 +443,43 @@ describe LogStash::Filters::Math do
     end
   end
 
+  describe "multithreading" do
+    it "should still calculate correctly" do
+      array = [
+        [ "+", "[var1]", "[var2]", "MEM[0]" ],
+        [ "-", "[var3]", "[var4]", "MEM[1]" ],
+        [ "*", "MEM[0]", "MEM[1]", "[result]" ]
+      ]
+
+      math_hash = {"calculate" => array}
+
+      event1 = LogStash::Event.new("var1" => 3.4,  "var2" => 6.6, "var3" => 4.4, "var4" => 2.4)
+      event2 = LogStash::Event.new("var1" => 6.8,  "var2" => 13.2, "var3" => 8.8, "var4" => 4.8)
+      plugin = described_class.new(math_hash)
+      plugin.register
+      expect do
+        thread1 = Thread.new(plugin, event1) do |plugin, event|
+          100.times do
+            plugin.filter(event)
+            result = event.get("result")
+            raise "Thread 1 failed, result is: #{result}" if result != 20.000000000000004
+            sleep 0.011
+          end
+        end
+        thread2 = Thread.new(plugin, event2) do |plugin, event|
+          100.times do
+            plugin.filter(event)
+            result = event.get("result")
+            raise "Thread 2 failed, result is: #{result}" if result != 80.00000000000001
+            sleep 0.01
+          end
+        end
+        thread1.join
+        thread2.join
+      end.not_to raise_exception
+    end
+  end
+
   describe "Sequence" do
     # The logstash config.
     config <<-CONFIG

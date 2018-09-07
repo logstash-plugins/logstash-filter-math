@@ -5,7 +5,7 @@ module LogStash module Filters
   module MathCalculationElements
     REGISTER_REFERENCE_RE = /^MEM\[(\d+)]$/
 
-    def self.build(reference, position, registers)
+    def self.build(reference, position)
       case reference
       when Numeric
         if position == 3
@@ -17,7 +17,7 @@ module LogStash module Filters
       when String
         match = REGISTER_REFERENCE_RE.match(reference)
         if match
-          RegisterElement.new(reference, position, match[1].to_i, registers)
+          RegisterElement.new(reference, position, match[1].to_i)
         else
           FieldElement.new(reference, position)
         end
@@ -28,11 +28,10 @@ module LogStash module Filters
 
     class RegisterElement
       # supports `get` and `set`
-      def initialize(reference, position, index, registers)
+      def initialize(reference, position, index)
         @reference = reference
         @position = position
         @index = index
-        @registers = registers
         @description = (position == 3 ? "#{@index}" : "operand #{@position}").prepend("register ").concat(": '#{@reference}'")
       end
 
@@ -40,13 +39,13 @@ module LogStash module Filters
         false
       end
 
-      def set(value, event)
+      def set(value, store)
         # raise usage error if called when position != 3 ??
-        get_register[@index] = value
+        store.register[@index] = value
       end
 
-      def get(event)
-        get_register[@index] #log warning if nil
+      def get(store)
+        store.register[@index] #log warning if nil
       end
 
       def inspect
@@ -55,12 +54,6 @@ module LogStash module Filters
 
       def to_s
         @description
-      end
-
-      private
-
-      def get_register
-        @registers.computeIfAbsent(Thread.current, lambda { |x| Array.new })
       end
     end
 
@@ -77,14 +70,14 @@ module LogStash module Filters
         false
       end
 
-      def set(value, event)
-        event.set(@field, value)
+      def set(value, store)
+        store.event.set(@field, value)
       end
 
-      def get(event)
-        value = event.get(@field)
+      def get(store)
+        value = store.event.get(@field)
         if value.nil?
-          logger.warn("field not found", "field" => @field, "event" => event.to_hash)
+          logger.warn("field not found", "field" => @field, "event" => store.event.to_hash)
           return nil
         end
         case value
@@ -93,7 +86,7 @@ module LogStash module Filters
         when LogStash::Timestamp, Time
           value.to_f
         else
-          logger.warn("field value is not numeric or time", "field" => @field, "value" => value, "event" => event.to_hash)
+          logger.warn("field value is not numeric or time", "field" => @field, "value" => value, "event" => store.event.to_hash)
           nil
         end
       end
@@ -118,7 +111,7 @@ module LogStash module Filters
         true
       end
 
-      def get(event = nil)
+      def get(store = nil)
         @literal
       end
 
