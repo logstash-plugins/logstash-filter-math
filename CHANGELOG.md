@@ -1,4 +1,4 @@
-## master
+## 1.1.1
   - Fix to make registers threadsafe. [math filter #10](https://github.com/logstash-plugins/logstash-filter-math/issues/10)
 
 ## 1.1.0
