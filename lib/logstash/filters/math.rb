@@ -3,7 +3,7 @@
 require "logstash/namespace"
 require "logstash/filters/base"
 
-require_relative "storage"
+require_relative "event_register_context"
 require_relative "math_functions"
 require_relative "math_calculation_elements"
 
@@ -38,10 +38,6 @@ module LogStash module Filters class Math < LogStash::Filters::Base
   config :calculate, :validate => :array, :required => true
 
   public
-
-  # def set_calculate_array(array)
-  #   @calculate = array
-  # end
 
   def register
     functions = {}
@@ -112,18 +108,18 @@ module LogStash module Filters class Math < LogStash::Filters::Base
 
   def filter(event)
     event_changed = false # can exit if none of the calculations are are suitable
-    store = Storage.new(event) # creates a new registers array, each element can use the event or register from the store
+    context = EventRegisterContext.new(event) # creates a new registers array, each element can use the event or register from the store
     @calculate_copy.each do |function, left_element, right_element, result_element|
       logger.debug("executing", "function" => function.name, "left_field" => left_element, "right_field" => right_element, "target" => result_element)
       # TODO add support for automatic conversion to Numeric if String
-      operand1 = left_element.get(store)
-      operand2 = right_element.get(store)
+      operand1 = left_element.get(context)
+      operand2 = right_element.get(context)
       # allow all the validation warnings to be logged before we skip to next
       next if operand1.nil? || operand2.nil?
       next if function.invalid?(operand1, operand2, event)
 
       result = function.call(operand1, operand2)
-      result_element.set(result, store)
+      result_element.set(result, context)
       logger.debug("calculation result stored", "function" => function.name, "target" => result_element, "result" => result)
       event_changed = true
     end

@@ -35,17 +35,21 @@ module LogStash module Filters
         @description = (position == 3 ? "#{@index}" : "operand #{@position}").prepend("register ").concat(": '#{@reference}'")
       end
 
+      def key
+        @index
+      end
+
       def literal?
         false
       end
 
-      def set(value, store)
+      def set(value, event_register_context)
         # raise usage error if called when position != 3 ??
-        store.register[@index] = value
+        event_register_context.set(self, value)
       end
 
-      def get(store)
-        store.register[@index] #log warning if nil
+      def get(event_register_context)
+        event_register_context.get(self) #log warning if nil
       end
 
       def inspect
@@ -59,6 +63,7 @@ module LogStash module Filters
 
     class FieldElement
       include LogStash::Util::Loggable
+
       # supports `get` and `set`
       def initialize(field, position)
         @field = field
@@ -66,18 +71,22 @@ module LogStash module Filters
         @description = (position == 3 ? "result" : "operand #{@position}").prepend("event ").concat(": '#{@field}'")
       end
 
+      def key
+        @field
+      end
+
       def literal?
         false
       end
 
-      def set(value, store)
-        store.event.set(@field, value)
+      def set(value, event_register_context)
+        event_register_context.set(self, value)
       end
 
-      def get(store)
-        value = store.event.get(@field)
+      def get(event_register_context)
+        value = event_register_context.get(self)
         if value.nil?
-          logger.warn("field not found", "field" => @field, "event" => store.event.to_hash)
+          logger.warn("field not found", "field" => @field, "event" => event_register_context.event.to_hash)
           return nil
         end
         case value
@@ -86,7 +95,7 @@ module LogStash module Filters
         when LogStash::Timestamp, Time
           value.to_f
         else
-          logger.warn("field value is not numeric or time", "field" => @field, "value" => value, "event" => store.event.to_hash)
+          logger.warn("field value is not numeric or time", "field" => @field, "value" => value, "event" => event_register_context.event.to_hash)
           nil
         end
       end
@@ -107,11 +116,15 @@ module LogStash module Filters
         @position = position
       end
 
+      def key
+        nil
+      end
+
       def literal?
         true
       end
 
-      def get(store = nil)
+      def get(event_register_context = nil)
         @literal
       end
 
