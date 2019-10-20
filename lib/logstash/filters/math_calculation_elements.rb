@@ -95,7 +95,7 @@ module LogStash module Filters
         when LogStash::Timestamp, Time
           value.to_f
         else
-          logger.warn("field value is not numeric or time", "field" => @field, "value" => value, "event" => event_register_context.event.to_hash)
+          logger.warn("field value is not numeric or time", "field" => @field, "value" => value, "class" => @field.class, "event" => event_register_context.event.to_hash)
           nil
         end
       end
