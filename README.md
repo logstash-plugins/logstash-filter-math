@@ -4,7 +4,7 @@ This plugin provides the ability to do various simple math operations (addition,
 
 # Logstash Plugin
 
-[![Travis Build Status](https://travis-ci.com/logstash-plugins/logstash-filter-math.svg)](https://travis-ci.com/logstash-plugins/logstash-filter-math)
+[![Unit Tests](https://github.com/logstash-plugins/logstash-filter-math/actions/workflows/unit-tests.yml/badge.svg?branch=main)](https://github.com/logstash-plugins/logstash-filter-math/actions/workflows/unit-tests.yml)
 
 This is a plugin for [Logstash](https://github.com/elastic/logstash).
 
